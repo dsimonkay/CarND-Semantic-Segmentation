@@ -19,6 +19,16 @@ else:
     print('Default GPU Device: {}'.format(tf.test.gpu_device_name()))
 
 
+# defining hyperparameters globally so that they can be referenced everywhere
+EPOCHS = 8
+BATCH_SIZE = 10
+LEARNING_RATE = 0.00006
+KEEP_PROBABILITY = 0.675
+INIT_STDDEV = 0.007
+REG_SCALE = 0.001
+
+
+
 
 def load_vgg(sess, vgg_path):
     """
@@ -36,8 +46,8 @@ def load_vgg(sess, vgg_path):
     vgg_layer4_out_tensor_name = 'layer4_out:0'
     vgg_layer7_out_tensor_name = 'layer7_out:0'
 
-    # downloading pretrained vgg model so that the function passes the unit test on my AWS instance
-    # for the first time as well
+    # downloading pretrained vgg model so that the function passes the unit test
+    # on my AWS instance also for the first time
     data_dir = './data'
     helper.maybe_download_pretrained_vgg(data_dir)
 
@@ -68,48 +78,39 @@ def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
     :return: The Tensor for the last layer of output
     """
 
-    STDDEV = 0.01
-    SCALE = 1e-3
-
     # 1x1 convolution on layer 7
     vgg_layer7_conv1x1 = tf.layers.conv2d(vgg_layer7_out, num_classes, 1, padding='same',
-                                           kernel_initializer=tf.random_normal_initializer(stddev=STDDEV),
-                                           # kernel_initializer=tf.initializers.truncated_normal(stddev=STDDEV),
-                                           kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=SCALE))
+                                           kernel_initializer=tf.truncated_normal_initializer(stddev=INIT_STDDEV),
+                                           kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=REG_SCALE))
     # scaling + 1x1 convolution on layer 4
     vgg_layer4_scaled = tf.multiply(vgg_layer4_out, 0.01, name='vgg_layer4_out_scaled')
     vgg_layer4_conv1x1 = tf.layers.conv2d(vgg_layer4_scaled, num_classes, 1, padding='same',
-                                           kernel_initializer=tf.random_normal_initializer(stddev=STDDEV),
-                                           # kernel_initializer=tf.initializers.truncated_normal(stddev=STDDEV),
-                                           kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=SCALE))
+                                           kernel_initializer=tf.truncated_normal_initializer(stddev=INIT_STDDEV),
+                                           kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=REG_SCALE))
     # scaling + 1x1 convolution on layer 3
     vgg_layer3_scaled = tf.multiply(vgg_layer3_out, 0.0001, name='vgg_layer4_out_scaled')
     vgg_layer3_conv1x1 = tf.layers.conv2d(vgg_layer3_scaled, num_classes, 1, padding='same',
-                                           kernel_initializer=tf.random_normal_initializer(stddev=STDDEV),
-                                           # kernel_initializer=tf.initializers.truncated_normal(stddev=STDDEV),
-                                           kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=SCALE))
+                                           kernel_initializer=tf.truncated_normal_initializer(stddev=INIT_STDDEV),
+                                           kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=REG_SCALE))
 
     # upsampling: 2x layer 7
     vgg_layer7_x2 = tf.layers.conv2d_transpose(vgg_layer7_conv1x1, num_classes, 4, strides=2, padding='same',
-                                               kernel_initializer=tf.random_normal_initializer(stddev=STDDEV),
-                                               # kernel_initializer=tf.initializers.truncated_normal(stddev=STDDEV),
-                                               kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=SCALE))
+                                               kernel_initializer=tf.truncated_normal_initializer(stddev=INIT_STDDEV),
+                                               kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=REG_SCALE))
     # adding: layer4 + 2x layer7
     output_layer = tf.add(vgg_layer7_x2, vgg_layer4_conv1x1)
 
     # upsampling: 2x (layer4 + 2x layer7)
     output_layer = tf.layers.conv2d_transpose(output_layer, num_classes, 4, strides=2, padding='same',
-                                              kernel_initializer=tf.random_normal_initializer(stddev=STDDEV),
-                                              # kernel_initializer=tf.initializers.truncated_normal(stddev=STDDEV),
-                                              kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=SCALE))
+                                              kernel_initializer=tf.truncated_normal_initializer(stddev=INIT_STDDEV),
+                                              kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=REG_SCALE))
     # adding: layer3 + 2x (layer4 + 2x layer7)
     output_layer = tf.add(output_layer, vgg_layer3_conv1x1)
 
     # upsampling: 8x (layer3 + 2x (layer4 + 2x layer7) )
     output_layer = tf.layers.conv2d_transpose(output_layer, num_classes, 16, strides=8, padding='same',
-                                              kernel_initializer=tf.random_normal_initializer(stddev=STDDEV),
-                                          # kernel_initializer=tf.initializers.truncated_normal(stddev=STDDEV),
-                                              kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=SCALE))
+                                              kernel_initializer=tf.truncated_normal_initializer(stddev=INIT_STDDEV),
+                                              kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=REG_SCALE))
     return output_layer
 
 tests.test_layers(layers)
@@ -151,7 +152,7 @@ tests.test_optimize(optimize)
 
 
 def train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_loss, input_image,
-             correct_label, keep_prob, learning_rate, learnig_rate_value = 0.001, keep_prob_value = 0.75):
+             correct_label, keep_prob, learning_rate):
     """
     Train neural network and print out the loss during training.
     :param sess: TF Session
@@ -180,8 +181,8 @@ def train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_l
             # assembling the feed dictionary
             train_feed_dict = {input_image: image,
                                correct_label: label,
-                               learning_rate: learnig_rate_value,
-                               keep_prob: keep_prob_value}
+                               learning_rate: LEARNING_RATE,
+                               keep_prob: KEEP_PROBABILITY}
 
             # running optimizer and getting the loss
             _, loss = sess.run([train_op, cross_entropy_loss], feed_dict=train_feed_dict)
@@ -200,12 +201,6 @@ tests.test_train_nn(train_nn)
 
 
 def run():
-
-    # some hyperparameters
-    EPOCHS = 8
-    BATCH_SIZE = 10
-    LEARNING_RATE = 0.0001
-    KEEP_PROB = 0.65
 
     num_classes = 2
     image_shape = (160, 576)
@@ -243,7 +238,7 @@ def run():
 
         # TODO: Train NN using the train_nn function
         train_nn(sess, EPOCHS, BATCH_SIZE, get_batches_fn, train_op, loss, image_input,
-                 correct_label, keep_prob, learning_rate, LEARNING_RATE, KEEP_PROB)
+                 correct_label, keep_prob, learning_rate)
 
         # TODO: Save inference data using helper.save_inference_samples
         helper.save_inference_samples(runs_dir, data_dir, sess, image_shape, logits, keep_prob, image_input)
