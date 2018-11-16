@@ -19,14 +19,14 @@ else:
     print('Default GPU Device: {}'.format(tf.test.gpu_device_name()))
 
 
+
 # defining hyperparameters globally so that they can be referenced everywhere
 EPOCHS = 8
 BATCH_SIZE = 10
-LEARNING_RATE = 0.00006
+LEARNING_RATE = 0.0001
 KEEP_PROBABILITY = 0.675
-INIT_STDDEV = 0.007
+INIT_STDDEV = 0.01
 REG_SCALE = 0.001
-
 
 
 
@@ -83,12 +83,12 @@ def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
                                            kernel_initializer=tf.truncated_normal_initializer(stddev=INIT_STDDEV),
                                            kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=REG_SCALE))
     # scaling + 1x1 convolution on layer 4
-    vgg_layer4_scaled = tf.multiply(vgg_layer4_out, 0.01, name='vgg_layer4_out_scaled')
+    vgg_layer4_scaled = tf.multiply(vgg_layer4_out, 0.01, name='vgg_layer4_scaled')
     vgg_layer4_conv1x1 = tf.layers.conv2d(vgg_layer4_scaled, num_classes, 1, padding='same',
                                            kernel_initializer=tf.truncated_normal_initializer(stddev=INIT_STDDEV),
                                            kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=REG_SCALE))
     # scaling + 1x1 convolution on layer 3
-    vgg_layer3_scaled = tf.multiply(vgg_layer3_out, 0.0001, name='vgg_layer4_out_scaled')
+    vgg_layer3_scaled = tf.multiply(vgg_layer3_out, 0.0001, name='vgg_layer3_scaled')
     vgg_layer3_conv1x1 = tf.layers.conv2d(vgg_layer3_scaled, num_classes, 1, padding='same',
                                            kernel_initializer=tf.truncated_normal_initializer(stddev=INIT_STDDEV),
                                            kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=REG_SCALE))
@@ -176,6 +176,9 @@ def train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_l
         epoch_start = time.time()
         losses = []
 
+        # debug message
+        print('Epoch {:d}: training...'.format(epoch+1), end='', flush=True)
+
         for image, label in get_batches_fn(batch_size):
 
             # assembling the feed dictionary
@@ -193,7 +196,7 @@ def train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_l
         average_loss = sum(losses) / float(len(losses))
 
         # displaying some debug info
-        print('Epoch {:d} took {:.3f} seconds. Average loss: {:.4f}'.format(epoch+1, epoch_duration, average_loss))
+        print("\b\b\b took {:.2f} seconds. Average loss: {:.4f}".format(epoch_duration, average_loss))
 
 tests.test_train_nn(train_nn)
 
