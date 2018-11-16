@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import os.path
+import time
 import tensorflow as tf
 import helper
 import warnings
@@ -18,6 +19,7 @@ else:
     print('Default GPU Device: {}'.format(tf.test.gpu_device_name()))
 
 
+
 def load_vgg(sess, vgg_path):
     """
     Load Pretrained VGG Model into TensorFlow.
@@ -25,17 +27,35 @@ def load_vgg(sess, vgg_path):
     :param vgg_path: Path to vgg folder, containing "variables/" and "saved_model.pb"
     :return: Tuple of Tensors from VGG model (image_input, keep_prob, layer3_out, layer4_out, layer7_out)
     """
-    # TODO: Implement function
-    #   Use tf.saved_model.loader.load to load the model and weights
+
+    # Use tf.saved_model.loader.load to load the model and weights
     vgg_tag = 'vgg16'
     vgg_input_tensor_name = 'image_input:0'
     vgg_keep_prob_tensor_name = 'keep_prob:0'
     vgg_layer3_out_tensor_name = 'layer3_out:0'
     vgg_layer4_out_tensor_name = 'layer4_out:0'
     vgg_layer7_out_tensor_name = 'layer7_out:0'
-    
-    return None, None, None, None, None
+
+    # downloading pretrained vgg model so that the function passes the unit test on my AWS instance
+    # for the first time as well
+    data_dir = './data'
+    helper.maybe_download_pretrained_vgg(data_dir)
+
+    # straightforward model loading...
+    tf.saved_model.loader.load(sess, [vgg_tag], vgg_path)
+    graph = tf.get_default_graph()
+
+    # ...and tensor extractionn
+    image_input = graph.get_tensor_by_name(vgg_input_tensor_name)
+    keep_prob = graph.get_tensor_by_name(vgg_keep_prob_tensor_name)
+    layer3_out = graph.get_tensor_by_name(vgg_layer3_out_tensor_name)
+    layer4_out = graph.get_tensor_by_name(vgg_layer4_out_tensor_name)
+    layer7_out = graph.get_tensor_by_name(vgg_layer7_out_tensor_name)
+
+    return image_input, keep_prob, layer3_out, layer4_out, layer7_out
+
 tests.test_load_vgg(load_vgg, tf)
+
 
 
 def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
@@ -47,9 +67,53 @@ def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
     :param num_classes: Number of classes to classify
     :return: The Tensor for the last layer of output
     """
-    # TODO: Implement function
-    return None
+
+    STDDEV = 0.01
+    SCALE = 1e-3
+
+    # 1x1 convolution on layer 7
+    vgg_layer7_conv1x1 = tf.layers.conv2d(vgg_layer7_out, num_classes, 1, padding='same',
+                                           kernel_initializer=tf.random_normal_initializer(stddev=STDDEV),
+                                           # kernel_initializer=tf.initializers.truncated_normal(stddev=STDDEV),
+                                           kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=SCALE))
+    # scaling + 1x1 convolution on layer 4
+    vgg_layer4_scaled = tf.multiply(vgg_layer4_out, 0.01, name='vgg_layer4_out_scaled')
+    vgg_layer4_conv1x1 = tf.layers.conv2d(vgg_layer4_scaled, num_classes, 1, padding='same',
+                                           kernel_initializer=tf.random_normal_initializer(stddev=STDDEV),
+                                           # kernel_initializer=tf.initializers.truncated_normal(stddev=STDDEV),
+                                           kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=SCALE))
+    # scaling + 1x1 convolution on layer 3
+    vgg_layer3_scaled = tf.multiply(vgg_layer3_out, 0.0001, name='vgg_layer4_out_scaled')
+    vgg_layer3_conv1x1 = tf.layers.conv2d(vgg_layer3_scaled, num_classes, 1, padding='same',
+                                           kernel_initializer=tf.random_normal_initializer(stddev=STDDEV),
+                                           # kernel_initializer=tf.initializers.truncated_normal(stddev=STDDEV),
+                                           kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=SCALE))
+
+    # upsampling: 2x layer 7
+    vgg_layer7_x2 = tf.layers.conv2d_transpose(vgg_layer7_conv1x1, num_classes, 4, strides=2, padding='same',
+                                               kernel_initializer=tf.random_normal_initializer(stddev=STDDEV),
+                                               # kernel_initializer=tf.initializers.truncated_normal(stddev=STDDEV),
+                                               kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=SCALE))
+    # adding: layer4 + 2x layer7
+    output_layer = tf.add(vgg_layer7_x2, vgg_layer4_conv1x1)
+
+    # upsampling: 2x (layer4 + 2x layer7)
+    output_layer = tf.layers.conv2d_transpose(output_layer, num_classes, 4, strides=2, padding='same',
+                                              kernel_initializer=tf.random_normal_initializer(stddev=STDDEV),
+                                              # kernel_initializer=tf.initializers.truncated_normal(stddev=STDDEV),
+                                              kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=SCALE))
+    # adding: layer3 + 2x (layer4 + 2x layer7)
+    output_layer = tf.add(output_layer, vgg_layer3_conv1x1)
+
+    # upsampling: 8x (layer3 + 2x (layer4 + 2x layer7) )
+    output_layer = tf.layers.conv2d_transpose(output_layer, num_classes, 16, strides=8, padding='same',
+                                              kernel_initializer=tf.random_normal_initializer(stddev=STDDEV),
+                                          # kernel_initializer=tf.initializers.truncated_normal(stddev=STDDEV),
+                                              kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=SCALE))
+    return output_layer
+
 tests.test_layers(layers)
+
 
 
 def optimize(nn_last_layer, correct_label, learning_rate, num_classes):
@@ -61,13 +125,33 @@ def optimize(nn_last_layer, correct_label, learning_rate, num_classes):
     :param num_classes: Number of classes to classify
     :return: Tuple of (logits, train_op, cross_entropy_loss)
     """
-    # TODO: Implement function
-    return None, None, None
+
+    # "the output tensor is 4D so we have to reshape it to 2D"
+    logits = tf.reshape(nn_last_layer, (-1, num_classes))
+    labels = tf.reshape(correct_label, (-1, num_classes))
+
+    # standard cross entropy loss...
+    cross_entropy_loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=labels, logits=logits))
+
+    # ...plus the losses of the regularizers
+    regularization_losses = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
+
+    # adding them up to get the total loss
+    loss = cross_entropy_loss + sum(regularization_losses)
+
+    # using adam optimizer
+    optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
+    train_op = optimizer.minimize(loss)
+
+    return logits, train_op, loss
+
 tests.test_optimize(optimize)
 
 
+
+
 def train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_loss, input_image,
-             correct_label, keep_prob, learning_rate):
+             correct_label, keep_prob, learning_rate, learnig_rate_value = 0.001, keep_prob_value = 0.75):
     """
     Train neural network and print out the loss during training.
     :param sess: TF Session
@@ -81,12 +165,48 @@ def train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_l
     :param keep_prob: TF Placeholder for dropout keep probability
     :param learning_rate: TF Placeholder for learning rate
     """
-    # TODO: Implement function
-    pass
+
+    # initializing global variables
+    sess.run(tf.global_variables_initializer())
+
+    for epoch in range(epochs):
+
+        # measuring epoch time
+        epoch_start = time.time()
+        losses = []
+
+        for image, label in get_batches_fn(batch_size):
+
+            # assembling the feed dictionary
+            train_feed_dict = {input_image: image,
+                               correct_label: label,
+                               learning_rate: learnig_rate_value,
+                               keep_prob: keep_prob_value}
+
+            # running optimizer and getting the loss
+            _, loss = sess.run([train_op, cross_entropy_loss], feed_dict=train_feed_dict)
+            losses.append(loss)
+
+        # bookkeeping
+        epoch_duration = time.time() - epoch_start
+        average_loss = sum(losses) / float(len(losses))
+
+        # displaying some debug info
+        print('Epoch {:d} took {:.3f} seconds. Average loss: {:.4f}'.format(epoch+1, epoch_duration, average_loss))
+
 tests.test_train_nn(train_nn)
 
 
+
+
 def run():
+
+    # some hyperparameters
+    EPOCHS = 8
+    BATCH_SIZE = 10
+    LEARNING_RATE = 0.0001
+    KEEP_PROB = 0.65
+
     num_classes = 2
     image_shape = (160, 576)
     data_dir = './data'
@@ -101,8 +221,10 @@ def run():
     #  https://www.cityscapes-dataset.com/
 
     with tf.Session() as sess:
+
         # Path to vgg model
         vgg_path = os.path.join(data_dir, 'vgg')
+
         # Create function to get batches
         get_batches_fn = helper.gen_batch_function(os.path.join(data_dir, 'data_road/training'), image_shape)
 
@@ -110,11 +232,21 @@ def run():
         #  https://datascience.stackexchange.com/questions/5224/how-to-prepare-augment-images-for-neural-network
 
         # TODO: Build NN using load_vgg, layers, and optimize function
+        image_input, keep_prob, layer3_out, layer4_out, layer7_out = load_vgg(sess, vgg_path)
+        output = layers(layer3_out, layer4_out, layer7_out, num_classes)
+
+        # declaring placeholders for the learning rate and for the labels
+        learning_rate = tf.placeholder(tf.float32, name='learning_rate')
+        correct_label = tf.placeholder(tf.float32, [None, None, None, num_classes], name='correct_label')
+
+        logits, train_op, loss = optimize(output, correct_label, learning_rate, num_classes)
 
         # TODO: Train NN using the train_nn function
+        train_nn(sess, EPOCHS, BATCH_SIZE, get_batches_fn, train_op, loss, image_input,
+                 correct_label, keep_prob, learning_rate, LEARNING_RATE, KEEP_PROB)
 
         # TODO: Save inference data using helper.save_inference_samples
-        #  helper.save_inference_samples(runs_dir, data_dir, sess, image_shape, logits, keep_prob, input_image)
+        helper.save_inference_samples(runs_dir, data_dir, sess, image_shape, logits, keep_prob, image_input)
 
         # OPTIONAL: Apply the trained model to a video
 
