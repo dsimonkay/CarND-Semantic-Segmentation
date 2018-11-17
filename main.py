@@ -20,19 +20,20 @@ else:
 
 
 
-# defining hyperparameters globally so that they can be referenced everywhere
-EPOCHS = 100
+# defining hyperparameters globally so that they can be accessed anywhere in the code
+EPOCHS = 40
 BATCH_SIZE = 10
 LEARNING_RATE = 0.0001
 KEEP_PROBABILITY = 0.675
 INITIALIZER_STDDEV = 0.01
 REGULARIZER_SCALE = 0.001
 
-# other common configuration variables
+# more parameters
 NUM_CLASSES = 3
 IMAGE_SHAPE = (160, 576)
 DATA_DIR = './data'
 RUNS_DIR = './runs'
+
 
 
 def load_vgg(sess, vgg_path):
@@ -52,7 +53,7 @@ def load_vgg(sess, vgg_path):
     vgg_layer7_out_tensor_name = 'layer7_out:0'
 
     # downloading pretrained vgg model so that the function passes the unit test
-    # on my AWS instance also for the first time
+    # on my AWS instance when running for the first time
     helper.maybe_download_pretrained_vgg(DATA_DIR)
 
     # straightforward model loading...
@@ -84,18 +85,18 @@ def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
 
     # 1x1 convolution on layer 7
     vgg_layer7_conv1x1 = tf.layers.conv2d(vgg_layer7_out, num_classes, 1, padding='same',
-                                           kernel_initializer=tf.truncated_normal_initializer(stddev=INITIALIZER_STDDEV),
-                                           kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=REGULARIZER_SCALE))
+                                          kernel_initializer=tf.truncated_normal_initializer(stddev=INITIALIZER_STDDEV),
+                                          kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=REGULARIZER_SCALE))
     # scaling + 1x1 convolution on layer 4
-    vgg_layer4_scaled = tf.multiply(vgg_layer4_out, 0.01, name='vgg_layer4_scaled')
+    vgg_layer4_scaled = tf.multiply(vgg_layer4_out, 0.01)
     vgg_layer4_conv1x1 = tf.layers.conv2d(vgg_layer4_scaled, num_classes, 1, padding='same',
-                                           kernel_initializer=tf.truncated_normal_initializer(stddev=INITIALIZER_STDDEV),
-                                           kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=REGULARIZER_SCALE))
+                                          kernel_initializer=tf.truncated_normal_initializer(stddev=INITIALIZER_STDDEV),
+                                          kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=REGULARIZER_SCALE))
     # scaling + 1x1 convolution on layer 3
-    vgg_layer3_scaled = tf.multiply(vgg_layer3_out, 0.0001, name='vgg_layer3_scaled')
+    vgg_layer3_scaled = tf.multiply(vgg_layer3_out, 0.0001)
     vgg_layer3_conv1x1 = tf.layers.conv2d(vgg_layer3_scaled, num_classes, 1, padding='same',
-                                           kernel_initializer=tf.truncated_normal_initializer(stddev=INITIALIZER_STDDEV),
-                                           kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=REGULARIZER_SCALE))
+                                          kernel_initializer=tf.truncated_normal_initializer(stddev=INITIALIZER_STDDEV),
+                                          kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=REGULARIZER_SCALE))
 
     # upsampling: 2x layer 7
     vgg_layer7_x2 = tf.layers.conv2d_transpose(vgg_layer7_conv1x1, num_classes, 4, strides=2, padding='same',
