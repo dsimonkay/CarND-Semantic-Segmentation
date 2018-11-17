@@ -21,13 +21,18 @@ else:
 
 
 # defining hyperparameters globally so that they can be referenced everywhere
-EPOCHS = 8
+EPOCHS = 100
 BATCH_SIZE = 10
 LEARNING_RATE = 0.0001
 KEEP_PROBABILITY = 0.675
-INIT_STDDEV = 0.01
-REG_SCALE = 0.001
+INITIALIZER_STDDEV = 0.01
+REGULARIZER_SCALE = 0.001
 
+# other common configuration variables
+NUM_CLASSES = 3
+IMAGE_SHAPE = (160, 576)
+DATA_DIR = './data'
+RUNS_DIR = './runs'
 
 
 def load_vgg(sess, vgg_path):
@@ -48,8 +53,7 @@ def load_vgg(sess, vgg_path):
 
     # downloading pretrained vgg model so that the function passes the unit test
     # on my AWS instance also for the first time
-    data_dir = './data'
-    helper.maybe_download_pretrained_vgg(data_dir)
+    helper.maybe_download_pretrained_vgg(DATA_DIR)
 
     # straightforward model loading...
     tf.saved_model.loader.load(sess, [vgg_tag], vgg_path)
@@ -80,37 +84,37 @@ def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
 
     # 1x1 convolution on layer 7
     vgg_layer7_conv1x1 = tf.layers.conv2d(vgg_layer7_out, num_classes, 1, padding='same',
-                                           kernel_initializer=tf.truncated_normal_initializer(stddev=INIT_STDDEV),
-                                           kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=REG_SCALE))
+                                           kernel_initializer=tf.truncated_normal_initializer(stddev=INITIALIZER_STDDEV),
+                                           kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=REGULARIZER_SCALE))
     # scaling + 1x1 convolution on layer 4
     vgg_layer4_scaled = tf.multiply(vgg_layer4_out, 0.01, name='vgg_layer4_scaled')
     vgg_layer4_conv1x1 = tf.layers.conv2d(vgg_layer4_scaled, num_classes, 1, padding='same',
-                                           kernel_initializer=tf.truncated_normal_initializer(stddev=INIT_STDDEV),
-                                           kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=REG_SCALE))
+                                           kernel_initializer=tf.truncated_normal_initializer(stddev=INITIALIZER_STDDEV),
+                                           kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=REGULARIZER_SCALE))
     # scaling + 1x1 convolution on layer 3
     vgg_layer3_scaled = tf.multiply(vgg_layer3_out, 0.0001, name='vgg_layer3_scaled')
     vgg_layer3_conv1x1 = tf.layers.conv2d(vgg_layer3_scaled, num_classes, 1, padding='same',
-                                           kernel_initializer=tf.truncated_normal_initializer(stddev=INIT_STDDEV),
-                                           kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=REG_SCALE))
+                                           kernel_initializer=tf.truncated_normal_initializer(stddev=INITIALIZER_STDDEV),
+                                           kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=REGULARIZER_SCALE))
 
     # upsampling: 2x layer 7
     vgg_layer7_x2 = tf.layers.conv2d_transpose(vgg_layer7_conv1x1, num_classes, 4, strides=2, padding='same',
-                                               kernel_initializer=tf.truncated_normal_initializer(stddev=INIT_STDDEV),
-                                               kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=REG_SCALE))
+                                               kernel_initializer=tf.truncated_normal_initializer(stddev=INITIALIZER_STDDEV),
+                                               kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=REGULARIZER_SCALE))
     # adding: layer4 + 2x layer7
     output_layer = tf.add(vgg_layer7_x2, vgg_layer4_conv1x1)
 
     # upsampling: 2x (layer4 + 2x layer7)
     output_layer = tf.layers.conv2d_transpose(output_layer, num_classes, 4, strides=2, padding='same',
-                                              kernel_initializer=tf.truncated_normal_initializer(stddev=INIT_STDDEV),
-                                              kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=REG_SCALE))
+                                              kernel_initializer=tf.truncated_normal_initializer(stddev=INITIALIZER_STDDEV),
+                                              kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=REGULARIZER_SCALE))
     # adding: layer3 + 2x (layer4 + 2x layer7)
     output_layer = tf.add(output_layer, vgg_layer3_conv1x1)
 
     # upsampling: 8x (layer3 + 2x (layer4 + 2x layer7) )
     output_layer = tf.layers.conv2d_transpose(output_layer, num_classes, 16, strides=8, padding='same',
-                                              kernel_initializer=tf.truncated_normal_initializer(stddev=INIT_STDDEV),
-                                              kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=REG_SCALE))
+                                              kernel_initializer=tf.truncated_normal_initializer(stddev=INITIALIZER_STDDEV),
+                                              kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=REGULARIZER_SCALE))
     return output_layer
 
 tests.test_layers(layers)
@@ -205,14 +209,10 @@ tests.test_train_nn(train_nn)
 
 def run():
 
-    num_classes = 2
-    image_shape = (160, 576)
-    data_dir = './data'
-    runs_dir = './runs'
-    tests.test_for_kitti_dataset(data_dir)
+    tests.test_for_kitti_dataset(DATA_DIR)
 
     # Download pretrained vgg model
-    helper.maybe_download_pretrained_vgg(data_dir)
+    helper.maybe_download_pretrained_vgg(DATA_DIR)
 
     # OPTIONAL: Train and Inference on the cityscapes dataset instead of the Kitti dataset.
     # You'll need a GPU with at least 10 teraFLOPS to train on.
@@ -221,30 +221,30 @@ def run():
     with tf.Session() as sess:
 
         # Path to vgg model
-        vgg_path = os.path.join(data_dir, 'vgg')
+        vgg_path = os.path.join(DATA_DIR, 'vgg')
 
         # Create function to get batches
-        get_batches_fn = helper.gen_batch_function(os.path.join(data_dir, 'data_road/training'), image_shape)
+        get_batches_fn = helper.gen_batch_function(os.path.join(DATA_DIR, 'data_road/training'), IMAGE_SHAPE, NUM_CLASSES)
 
         # OPTIONAL: Augment Images for better results
         #  https://datascience.stackexchange.com/questions/5224/how-to-prepare-augment-images-for-neural-network
 
         # TODO: Build NN using load_vgg, layers, and optimize function
         image_input, keep_prob, layer3_out, layer4_out, layer7_out = load_vgg(sess, vgg_path)
-        output = layers(layer3_out, layer4_out, layer7_out, num_classes)
+        output = layers(layer3_out, layer4_out, layer7_out, NUM_CLASSES)
 
         # declaring placeholders for the learning rate and for the labels
         learning_rate = tf.placeholder(tf.float32, name='learning_rate')
-        correct_label = tf.placeholder(tf.float32, [None, None, None, num_classes], name='correct_label')
+        correct_label = tf.placeholder(tf.float32, [None, None, None, NUM_CLASSES], name='correct_label')
 
-        logits, train_op, loss = optimize(output, correct_label, learning_rate, num_classes)
+        logits, train_op, loss = optimize(output, correct_label, learning_rate, NUM_CLASSES)
 
         # TODO: Train NN using the train_nn function
         train_nn(sess, EPOCHS, BATCH_SIZE, get_batches_fn, train_op, loss, image_input,
                  correct_label, keep_prob, learning_rate)
 
         # TODO: Save inference data using helper.save_inference_samples
-        helper.save_inference_samples(runs_dir, data_dir, sess, image_shape, logits, keep_prob, image_input)
+        helper.save_inference_samples(RUNS_DIR, DATA_DIR, sess, IMAGE_SHAPE, logits, keep_prob, image_input, NUM_CLASSES)
 
         # OPTIONAL: Apply the trained model to a video
 
