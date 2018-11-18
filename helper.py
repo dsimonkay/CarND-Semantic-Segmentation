@@ -80,13 +80,15 @@ def gen_batch_function(data_folder, image_shape, num_classes):
 
         background_color = np.array([255, 0, 0])
         road_color = np.array([255, 0, 255])
-        oher_road_color = np.array([0, 0, 0])
+        other_road_color = np.array([0, 0, 0])
 
         random.shuffle(image_paths)
         for batch_i in range(0, len(image_paths), batch_size):
+
             images = []
             gt_images = []
             for image_file in image_paths[batch_i:batch_i+batch_size]:
+
                 gt_image_file = label_paths[os.path.basename(image_file)]
 
                 image = scipy.misc.imresize(scipy.misc.imread(image_file), image_shape)
@@ -95,7 +97,7 @@ def gen_batch_function(data_folder, image_shape, num_classes):
                 # separating ground truth channels
                 gt_bg = np.all(gt_image == background_color, axis=2)
                 gt_rd = np.all(gt_image == road_color, axis=2)
-                gt_o_rd = np.all(gt_image == oher_road_color, axis=2)
+                gt_o_rd = np.all(gt_image == other_road_color, axis=2)
 
                 gt_bg = gt_bg.reshape(*gt_bg.shape, 1)
                 gt_rd = gt_rd.reshape(*gt_rd.shape, 1)
@@ -111,6 +113,7 @@ def gen_batch_function(data_folder, image_shape, num_classes):
                 gt_images.append(gt_image)
 
             yield np.array(images), np.array(gt_images)
+
     return get_batches_fn
 
 
@@ -138,7 +141,7 @@ def gen_test_output(sess, logits, keep_prob, image_pl, data_folder, image_shape,
         segmentation_rd = (im_softmax_rd > 0.5).reshape(image_shape[0], image_shape[1], 1)
         mask = np.dot(segmentation_rd, np.array([[0, 255, 0, 127]]))
 
-        # ...and the other road
+        # ...and the other roads
         if num_classes == 3:
             im_softmax_o_rd = im_softmax[0][:, 2].reshape(image_shape[0], image_shape[1])
             segmentation_o_rd = (im_softmax_o_rd > 0.5).reshape(image_shape[0], image_shape[1], 1)

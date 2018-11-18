@@ -21,7 +21,7 @@ else:
 
 
 # defining hyperparameters globally so that they can be accessed anywhere in the code
-EPOCHS = 40
+EPOCHS = 15
 BATCH_SIZE = 10
 LEARNING_RATE = 0.0001
 KEEP_PROBABILITY = 0.675
@@ -89,11 +89,13 @@ def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
                                           kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=REGULARIZER_SCALE))
     # scaling + 1x1 convolution on layer 4
     vgg_layer4_scaled = tf.multiply(vgg_layer4_out, 0.01)
+    # vgg_layer4_scaled = vgg_layer4_out
     vgg_layer4_conv1x1 = tf.layers.conv2d(vgg_layer4_scaled, num_classes, 1, padding='same',
                                           kernel_initializer=tf.truncated_normal_initializer(stddev=INITIALIZER_STDDEV),
                                           kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=REGULARIZER_SCALE))
     # scaling + 1x1 convolution on layer 3
     vgg_layer3_scaled = tf.multiply(vgg_layer3_out, 0.0001)
+    # vgg_layer3_scaled = vgg_layer3_out
     vgg_layer3_conv1x1 = tf.layers.conv2d(vgg_layer3_scaled, num_classes, 1, padding='same',
                                           kernel_initializer=tf.truncated_normal_initializer(stddev=INITIALIZER_STDDEV),
                                           kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=REGULARIZER_SCALE))
