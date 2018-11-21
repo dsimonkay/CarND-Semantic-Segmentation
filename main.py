@@ -21,12 +21,12 @@ else:
 
 
 # defining hyperparameters globally so that they can be accessed anywhere in the code
-EPOCHS = 15
+EPOCHS = 30
 BATCH_SIZE = 10
 LEARNING_RATE = 0.0001
 KEEP_PROBABILITY = 0.675
 INITIALIZER_STDDEV = 0.01
-REGULARIZER_SCALE = 0.001
+REGULARIZER_SCALE = 0.01
 
 # more parameters
 NUM_CLASSES = 3
@@ -85,38 +85,44 @@ def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
 
     # 1x1 convolution on layer 7
     vgg_layer7_conv1x1 = tf.layers.conv2d(vgg_layer7_out, num_classes, 1, padding='same',
-                                          kernel_initializer=tf.truncated_normal_initializer(stddev=INITIALIZER_STDDEV),
+                                          # kernel_initializer=tf.truncated_normal_initializer(stddev=INITIALIZER_STDDEV))
+                                          # activity_regularizer=tf.contrib.layers.l2_regularizer(scale=REGULARIZER_SCALE))
                                           kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=REGULARIZER_SCALE))
     # scaling + 1x1 convolution on layer 4
     vgg_layer4_scaled = tf.multiply(vgg_layer4_out, 0.01)
     # vgg_layer4_scaled = vgg_layer4_out
     vgg_layer4_conv1x1 = tf.layers.conv2d(vgg_layer4_scaled, num_classes, 1, padding='same',
-                                          kernel_initializer=tf.truncated_normal_initializer(stddev=INITIALIZER_STDDEV),
+                                          # kernel_initializer=tf.truncated_normal_initializer(stddev=INITIALIZER_STDDEV))
+                                          # activity_regularizer=tf.contrib.layers.l2_regularizer(scale=REGULARIZER_SCALE))
                                           kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=REGULARIZER_SCALE))
     # scaling + 1x1 convolution on layer 3
     vgg_layer3_scaled = tf.multiply(vgg_layer3_out, 0.0001)
     # vgg_layer3_scaled = vgg_layer3_out
     vgg_layer3_conv1x1 = tf.layers.conv2d(vgg_layer3_scaled, num_classes, 1, padding='same',
-                                          kernel_initializer=tf.truncated_normal_initializer(stddev=INITIALIZER_STDDEV),
+                                          # kernel_initializer=tf.truncated_normal_initializer(stddev=INITIALIZER_STDDEV))
+                                          # activity_regularizer=tf.contrib.layers.l2_regularizer(scale=REGULARIZER_SCALE))
                                           kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=REGULARIZER_SCALE))
 
     # upsampling: 2x layer 7
     vgg_layer7_x2 = tf.layers.conv2d_transpose(vgg_layer7_conv1x1, num_classes, 4, strides=2, padding='same',
-                                               kernel_initializer=tf.truncated_normal_initializer(stddev=INITIALIZER_STDDEV),
+                                               # kernel_initializer=tf.truncated_normal_initializer(stddev=INITIALIZER_STDDEV))
+                                               # activity_regularizer=tf.contrib.layers.l2_regularizer(scale=REGULARIZER_SCALE))
                                                kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=REGULARIZER_SCALE))
     # adding: layer4 + 2x layer7
     output_layer = tf.add(vgg_layer7_x2, vgg_layer4_conv1x1)
 
     # upsampling: 2x (layer4 + 2x layer7)
     output_layer = tf.layers.conv2d_transpose(output_layer, num_classes, 4, strides=2, padding='same',
-                                              kernel_initializer=tf.truncated_normal_initializer(stddev=INITIALIZER_STDDEV),
+                                              # kernel_initializer=tf.truncated_normal_initializer(stddev=INITIALIZER_STDDEV))
+                                              # activity_regularizer=tf.contrib.layers.l2_regularizer(scale=REGULARIZER_SCALE))
                                               kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=REGULARIZER_SCALE))
     # adding: layer3 + 2x (layer4 + 2x layer7)
     output_layer = tf.add(output_layer, vgg_layer3_conv1x1)
 
     # upsampling: 8x (layer3 + 2x (layer4 + 2x layer7) )
     output_layer = tf.layers.conv2d_transpose(output_layer, num_classes, 16, strides=8, padding='same',
-                                              kernel_initializer=tf.truncated_normal_initializer(stddev=INITIALIZER_STDDEV),
+                                              # kernel_initializer=tf.truncated_normal_initializer(stddev=INITIALIZER_STDDEV))
+                                              # activity_regularizer=tf.contrib.layers.l2_regularizer(scale=REGULARIZER_SCALE))
                                               kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=REGULARIZER_SCALE))
     return output_layer
 
@@ -145,7 +151,8 @@ def optimize(nn_last_layer, correct_label, learning_rate, num_classes):
     regularization_losses = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
 
     # adding them up to get the total loss
-    loss = cross_entropy_loss + sum(regularization_losses)
+    loss = cross_entropy_loss
+    loss += sum(regularization_losses)
 
     # using adam optimizer
     optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
@@ -174,12 +181,15 @@ def train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_l
     :param learning_rate: TF Placeholder for learning rate
     """
 
+    # measuring training duration
+    training_start = time.time()
+
     # initializing global variables
     sess.run(tf.global_variables_initializer())
 
     for epoch in range(epochs):
 
-        # measuring epoch time
+        # measuring epoch duration
         epoch_start = time.time()
         losses = []
 
@@ -204,6 +214,13 @@ def train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_l
 
         # displaying some debug info
         print("\b\b\b took {:.2f} seconds. Average loss: {:.4f}".format(epoch_duration, average_loss))
+
+    # displaying some debug info
+    training_duration = time.time() - training_start
+    training_duration_mins = int(training_duration // 60);
+    training_duration_secs = int(training_duration - training_duration_mins * 60);
+
+    print("Training took {:d} minutes and {:d} seconds.".format(training_duration_mins, training_duration_secs))
 
 tests.test_train_nn(train_nn)
 
