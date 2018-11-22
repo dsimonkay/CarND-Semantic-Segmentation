@@ -21,15 +21,17 @@ else:
 
 
 # defining hyperparameters globally so that they can be accessed anywhere in the code
-EPOCHS = 30
+EPOCHS = 50
 BATCH_SIZE = 10
 LEARNING_RATE = 0.0001
 KEEP_PROBABILITY = 0.675
 INITIALIZER_STDDEV = 0.01
-REGULARIZER_SCALE = 0.01
+REGULARIZER_SCALE = 0.001
 
 # more parameters
-NUM_CLASSES = 3
+USE_INITIALIZER = True
+USE_REGULARIZER = True
+NUM_CLASSES = 2
 IMAGE_SHAPE = (160, 576)
 DATA_DIR = './data'
 RUNS_DIR = './runs'
@@ -85,45 +87,39 @@ def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
 
     # 1x1 convolution on layer 7
     vgg_layer7_conv1x1 = tf.layers.conv2d(vgg_layer7_out, num_classes, 1, padding='same',
-                                          # kernel_initializer=tf.truncated_normal_initializer(stddev=INITIALIZER_STDDEV))
-                                          # activity_regularizer=tf.contrib.layers.l2_regularizer(scale=REGULARIZER_SCALE))
-                                          kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=REGULARIZER_SCALE))
+                                          kernel_initializer=tf.truncated_normal_initializer(stddev=INITIALIZER_STDDEV) if USE_INITIALIZER else None,
+                                          kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=REGULARIZER_SCALE) if USE_REGULARIZER else None)
     # scaling + 1x1 convolution on layer 4
     vgg_layer4_scaled = tf.multiply(vgg_layer4_out, 0.01)
     # vgg_layer4_scaled = vgg_layer4_out
     vgg_layer4_conv1x1 = tf.layers.conv2d(vgg_layer4_scaled, num_classes, 1, padding='same',
-                                          # kernel_initializer=tf.truncated_normal_initializer(stddev=INITIALIZER_STDDEV))
-                                          # activity_regularizer=tf.contrib.layers.l2_regularizer(scale=REGULARIZER_SCALE))
-                                          kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=REGULARIZER_SCALE))
+                                          kernel_initializer=tf.truncated_normal_initializer(stddev=INITIALIZER_STDDEV) if USE_INITIALIZER else None,
+                                          kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=REGULARIZER_SCALE) if USE_REGULARIZER else None)
     # scaling + 1x1 convolution on layer 3
     vgg_layer3_scaled = tf.multiply(vgg_layer3_out, 0.0001)
     # vgg_layer3_scaled = vgg_layer3_out
     vgg_layer3_conv1x1 = tf.layers.conv2d(vgg_layer3_scaled, num_classes, 1, padding='same',
-                                          # kernel_initializer=tf.truncated_normal_initializer(stddev=INITIALIZER_STDDEV))
-                                          # activity_regularizer=tf.contrib.layers.l2_regularizer(scale=REGULARIZER_SCALE))
-                                          kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=REGULARIZER_SCALE))
+                                          kernel_initializer=tf.truncated_normal_initializer(stddev=INITIALIZER_STDDEV) if USE_INITIALIZER else None,
+                                          kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=REGULARIZER_SCALE) if USE_REGULARIZER else None)
 
     # upsampling: 2x layer 7
     vgg_layer7_x2 = tf.layers.conv2d_transpose(vgg_layer7_conv1x1, num_classes, 4, strides=2, padding='same',
-                                               # kernel_initializer=tf.truncated_normal_initializer(stddev=INITIALIZER_STDDEV))
-                                               # activity_regularizer=tf.contrib.layers.l2_regularizer(scale=REGULARIZER_SCALE))
-                                               kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=REGULARIZER_SCALE))
+                                               kernel_initializer=tf.truncated_normal_initializer(stddev=INITIALIZER_STDDEV) if USE_INITIALIZER else None,
+                                               kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=REGULARIZER_SCALE) if USE_REGULARIZER else None)
     # adding: layer4 + 2x layer7
     output_layer = tf.add(vgg_layer7_x2, vgg_layer4_conv1x1)
 
     # upsampling: 2x (layer4 + 2x layer7)
     output_layer = tf.layers.conv2d_transpose(output_layer, num_classes, 4, strides=2, padding='same',
-                                              # kernel_initializer=tf.truncated_normal_initializer(stddev=INITIALIZER_STDDEV))
-                                              # activity_regularizer=tf.contrib.layers.l2_regularizer(scale=REGULARIZER_SCALE))
-                                              kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=REGULARIZER_SCALE))
+                                              kernel_initializer=tf.truncated_normal_initializer(stddev=INITIALIZER_STDDEV) if USE_INITIALIZER else None,
+                                              kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=REGULARIZER_SCALE) if USE_REGULARIZER else None)
     # adding: layer3 + 2x (layer4 + 2x layer7)
     output_layer = tf.add(output_layer, vgg_layer3_conv1x1)
 
     # upsampling: 8x (layer3 + 2x (layer4 + 2x layer7) )
     output_layer = tf.layers.conv2d_transpose(output_layer, num_classes, 16, strides=8, padding='same',
-                                              # kernel_initializer=tf.truncated_normal_initializer(stddev=INITIALIZER_STDDEV))
-                                              # activity_regularizer=tf.contrib.layers.l2_regularizer(scale=REGULARIZER_SCALE))
-                                              kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=REGULARIZER_SCALE))
+                                              kernel_initializer=tf.truncated_normal_initializer(stddev=INITIALIZER_STDDEV) if USE_INITIALIZER else None,
+                                              kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=REGULARIZER_SCALE) if USE_REGULARIZER else None)
     return output_layer
 
 tests.test_layers(layers)
@@ -145,14 +141,12 @@ def optimize(nn_last_layer, correct_label, learning_rate, num_classes):
     labels = tf.reshape(correct_label, (-1, num_classes))
 
     # standard cross entropy loss...
-    cross_entropy_loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=labels, logits=logits))
+    loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=labels, logits=logits))
 
-    # ...plus the losses of the regularizers
-    regularization_losses = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
-
-    # adding them up to get the total loss
-    loss = cross_entropy_loss
-    loss += sum(regularization_losses)
+    # ...plus the losses of the regularizers (if using them)
+    if USE_REGULARIZER:
+        regularization_losses = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
+        loss += sum(regularization_losses)
 
     # using adam optimizer
     optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
@@ -180,6 +174,12 @@ def train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_l
     :param keep_prob: TF Placeholder for dropout keep probability
     :param learning_rate: TF Placeholder for learning rate
     """
+
+    # output
+    log = []
+    log.append("TensorFlow version: {}".format(tf.__version__))
+    if tf.test.gpu_device_name():
+        log.append("Default GPU device: {}".format(tf.test.gpu_device_name()))
 
     # measuring training duration
     training_start = time.time()
@@ -215,12 +215,22 @@ def train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_l
         # displaying some debug info
         print("\b\b\b took {:.2f} seconds. Average loss: {:.4f}".format(epoch_duration, average_loss))
 
+        log.append("Epoch {:d}: training took {:.2f} seconds. Average loss: {:.4f}".format(epoch+1, epoch_duration, average_loss))
+
     # displaying some debug info
     training_duration = time.time() - training_start
     training_duration_mins = int(training_duration // 60);
     training_duration_secs = int(training_duration - training_duration_mins * 60);
 
-    print("Training took {:d} minutes and {:d} seconds.".format(training_duration_mins, training_duration_secs))
+    min_plural = '' if training_duration_mins == 1 else 's'
+    sec_plural = '' if training_duration_secs == 1 else 's'
+
+    training_summary = "Training took {:d} minute{} and {:d} second{}.".format(training_duration_mins, min_plural,
+                                                                               training_duration_secs, sec_plural)
+    print(training_summary)
+    log.append(training_summary)
+
+    return log
 
 tests.test_train_nn(train_nn)
 
@@ -260,11 +270,36 @@ def run():
         logits, train_op, loss = optimize(output, correct_label, learning_rate, NUM_CLASSES)
 
         # TODO: Train NN using the train_nn function
-        train_nn(sess, EPOCHS, BATCH_SIZE, get_batches_fn, train_op, loss, image_input,
-                 correct_label, keep_prob, learning_rate)
+        training_log = train_nn(sess, EPOCHS, BATCH_SIZE, get_batches_fn, train_op, loss, image_input,
+                                correct_label, keep_prob, learning_rate)
 
         # TODO: Save inference data using helper.save_inference_samples
-        helper.save_inference_samples(RUNS_DIR, DATA_DIR, sess, IMAGE_SHAPE, logits, keep_prob, image_input, NUM_CLASSES)
+        output_dir = helper.save_inference_samples(RUNS_DIR, DATA_DIR, sess, IMAGE_SHAPE, logits, keep_prob, image_input, NUM_CLASSES)
+
+        # assembling parameters so that they get written to the output directory as well
+        params = {
+            'epochs': EPOCHS,
+            'batch_size': BATCH_SIZE,
+            'learning_rate': LEARNING_RATE,
+            'keep_probabilty': KEEP_PROBABILITY,
+            'use_initializer': USE_INITIALIZER,
+            'initializer_std_dev': INITIALIZER_STDDEV,
+            'use_regularizer': USE_REGULARIZER,
+            'regularizer_scale': REGULARIZER_SCALE,
+            'num_classes': NUM_CLASSES,
+            'image_shape': IMAGE_SHAPE,
+            'data_dir': DATA_DIR
+        }
+
+        # saving the parameters...
+        with open(os.path.join(output_dir, "paremeters.txt"), "w") as parameters_file:
+            for key in params:
+                parameters_file.write("{}: {}\n".format(key, params[key]))
+
+        # ...and the training log
+        with open(os.path.join(output_dir, "training.log"), "w") as training_log_file:
+            for line in training_log:
+                training_log_file.write(line + "\n")
 
         # OPTIONAL: Apply the trained model to a video
 

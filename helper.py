@@ -107,6 +107,10 @@ def gen_batch_function(data_folder, image_shape, num_classes):
                     gt_image = np.concatenate((gt_bg, gt_rd, gt_o_rd), axis=2)
 
                 else:
+                    # unfortunately, this doesn't work
+                    # gt_image = np.concatenate((gt_bg, gt_rd), axis=2)
+
+                    # so using the original code
                     gt_image = np.concatenate((gt_bg, np.invert(gt_bg)), axis=2)
 
                 images.append(image)
@@ -167,5 +171,8 @@ def save_inference_samples(runs_dir, data_dir, sess, image_shape, logits, keep_p
     print('Training Finished. Saving test images to: {}'.format(output_dir))
     image_outputs = gen_test_output(
         sess, logits, keep_prob, input_image, os.path.join(data_dir, 'data_road/testing'), image_shape, num_classes)
+
     for name, image in image_outputs:
         scipy.misc.imsave(os.path.join(output_dir, name), image)
+
+    return output_dir
