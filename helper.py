@@ -107,7 +107,7 @@ def gen_batch_function(data_folder, image_shape, num_classes):
                     gt_image = np.concatenate((gt_bg, gt_rd, gt_o_rd), axis=2)
 
                 else:
-                    # unfortunately, this doesn't work
+                    # unfortunately, this doesn't work (but why?...)
                     # gt_image = np.concatenate((gt_bg, gt_rd), axis=2)
 
                     # so using the original code
@@ -122,7 +122,7 @@ def gen_batch_function(data_folder, image_shape, num_classes):
 
 
 
-def gen_test_output(sess, logits, keep_prob, image_pl, data_folder, image_shape, num_classes=2):
+def gen_test_output(sess, logits, keep_prob, image_pl, data_folder, image_shape, params={}):
     """
     Generate test output using the test images
     :param sess: TF session
@@ -133,7 +133,14 @@ def gen_test_output(sess, logits, keep_prob, image_pl, data_folder, image_shape,
     :param image_shape: Tuple - Shape of image
     :return: Output for for each test image
     """
+
+    # extracting relevant parameters
+    num_classes = params['num_classes'] if 'num_classes' in params else 2
+    probability_threshold = params['probability_threshold'] if 'probability_threshold' in params else 0.5
+
+    # processing files
     for image_file in glob(os.path.join(data_folder, 'image_2', '*.png')):
+
         image = scipy.misc.imresize(scipy.misc.imread(image_file), image_shape)
 
         im_softmax = sess.run(
@@ -142,13 +149,13 @@ def gen_test_output(sess, logits, keep_prob, image_pl, data_folder, image_shape,
 
         # masking the road...
         im_softmax_rd = im_softmax[0][:, 1].reshape(image_shape[0], image_shape[1])
-        segmentation_rd = (im_softmax_rd > 0.5).reshape(image_shape[0], image_shape[1], 1)
+        segmentation_rd = (im_softmax_rd > probability_threshold).reshape(image_shape[0], image_shape[1], 1)
         mask = np.dot(segmentation_rd, np.array([[0, 255, 0, 127]]))
 
         # ...and the other roads
         if num_classes == 3:
             im_softmax_o_rd = im_softmax[0][:, 2].reshape(image_shape[0], image_shape[1])
-            segmentation_o_rd = (im_softmax_o_rd > 0.5).reshape(image_shape[0], image_shape[1], 1)
+            segmentation_o_rd = (im_softmax_o_rd > probability_threshold).reshape(image_shape[0], image_shape[1], 1)
             mask = mask + np.dot(segmentation_o_rd, np.array([[0, 0, 255, 127]]))
 
         mask = scipy.misc.toimage(mask, mode="RGBA")
@@ -158,8 +165,12 @@ def gen_test_output(sess, logits, keep_prob, image_pl, data_folder, image_shape,
         yield os.path.basename(image_file), np.array(street_im)
 
 
+def save_inference_samples(sess, logits, keep_prob, input_image, params={}):
 
-def save_inference_samples(runs_dir, data_dir, sess, image_shape, logits, keep_prob, input_image, num_classes=2):
+    # extracting relevant parameters
+    runs_dir = params['runs_dir'] if 'runs_dir' in params else './runs'
+    data_dir = params['data_dir'] if 'data_dir' in params else './data'
+    image_shape = params['image_shape'] if 'image_shape' in params else (160, 576)
 
     # Make folder for current run
     output_dir = os.path.join(runs_dir, str(time.time()))
@@ -170,7 +181,7 @@ def save_inference_samples(runs_dir, data_dir, sess, image_shape, logits, keep_p
     # Run NN on test images and save them to HD
     print('Training Finished. Saving test images to: {}'.format(output_dir))
     image_outputs = gen_test_output(
-        sess, logits, keep_prob, input_image, os.path.join(data_dir, 'data_road/testing'), image_shape, num_classes)
+        sess, logits, keep_prob, input_image, os.path.join(data_dir, 'data_road/testing'), image_shape, params)
 
     for name, image in image_outputs:
         scipy.misc.imsave(os.path.join(output_dir, name), image)

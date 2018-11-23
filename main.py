@@ -21,21 +21,21 @@ else:
 
 
 # defining hyperparameters globally so that they can be accessed anywhere in the code
-EPOCHS = 50
-BATCH_SIZE = 10
+EPOCHS = 100
+BATCH_SIZE = 7
 LEARNING_RATE = 0.0001
-KEEP_PROBABILITY = 0.675
-INITIALIZER_STDDEV = 0.01
+KEEP_PROBABILITY = 0.75
+INITIALIZER_STDDEV = 0.0075
 REGULARIZER_SCALE = 0.001
 
 # more parameters
-USE_INITIALIZER = True
-USE_REGULARIZER = True
 NUM_CLASSES = 2
 IMAGE_SHAPE = (160, 576)
 DATA_DIR = './data'
 RUNS_DIR = './runs'
-
+USE_INITIALIZER = True
+USE_REGULARIZER = True
+PROBABILITY_THRESHOLD = 0.8
 
 
 def load_vgg(sess, vgg_path):
@@ -54,7 +54,7 @@ def load_vgg(sess, vgg_path):
     vgg_layer4_out_tensor_name = 'layer4_out:0'
     vgg_layer7_out_tensor_name = 'layer7_out:0'
 
-    # downloading pretrained vgg model so that the function passes the unit test
+    # downloading the pretrained vgg model so that the function passes the unit test
     # on my AWS instance when running for the first time
     helper.maybe_download_pretrained_vgg(DATA_DIR)
 
@@ -89,23 +89,15 @@ def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
     vgg_layer7_conv1x1 = tf.layers.conv2d(vgg_layer7_out, num_classes, 1, padding='same',
                                           kernel_initializer=tf.truncated_normal_initializer(stddev=INITIALIZER_STDDEV) if USE_INITIALIZER else None,
                                           kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=REGULARIZER_SCALE) if USE_REGULARIZER else None)
-    # scaling + 1x1 convolution on layer 4
-    vgg_layer4_scaled = tf.multiply(vgg_layer4_out, 0.01)
-    # vgg_layer4_scaled = vgg_layer4_out
-    vgg_layer4_conv1x1 = tf.layers.conv2d(vgg_layer4_scaled, num_classes, 1, padding='same',
-                                          kernel_initializer=tf.truncated_normal_initializer(stddev=INITIALIZER_STDDEV) if USE_INITIALIZER else None,
-                                          kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=REGULARIZER_SCALE) if USE_REGULARIZER else None)
-    # scaling + 1x1 convolution on layer 3
-    vgg_layer3_scaled = tf.multiply(vgg_layer3_out, 0.0001)
-    # vgg_layer3_scaled = vgg_layer3_out
-    vgg_layer3_conv1x1 = tf.layers.conv2d(vgg_layer3_scaled, num_classes, 1, padding='same',
-                                          kernel_initializer=tf.truncated_normal_initializer(stddev=INITIALIZER_STDDEV) if USE_INITIALIZER else None,
-                                          kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=REGULARIZER_SCALE) if USE_REGULARIZER else None)
-
     # upsampling: 2x layer 7
     vgg_layer7_x2 = tf.layers.conv2d_transpose(vgg_layer7_conv1x1, num_classes, 4, strides=2, padding='same',
                                                kernel_initializer=tf.truncated_normal_initializer(stddev=INITIALIZER_STDDEV) if USE_INITIALIZER else None,
                                                kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=REGULARIZER_SCALE) if USE_REGULARIZER else None)
+    # scaling + 1x1 convolution on layer 4
+    vgg_layer4_scaled = tf.multiply(vgg_layer4_out, 0.01)
+    vgg_layer4_conv1x1 = tf.layers.conv2d(vgg_layer4_scaled, num_classes, 1, padding='same',
+                                          kernel_initializer=tf.truncated_normal_initializer(stddev=INITIALIZER_STDDEV) if USE_INITIALIZER else None,
+                                          kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=REGULARIZER_SCALE) if USE_REGULARIZER else None)
     # adding: layer4 + 2x layer7
     output_layer = tf.add(vgg_layer7_x2, vgg_layer4_conv1x1)
 
@@ -113,6 +105,11 @@ def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
     output_layer = tf.layers.conv2d_transpose(output_layer, num_classes, 4, strides=2, padding='same',
                                               kernel_initializer=tf.truncated_normal_initializer(stddev=INITIALIZER_STDDEV) if USE_INITIALIZER else None,
                                               kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=REGULARIZER_SCALE) if USE_REGULARIZER else None)
+    # scaling + 1x1 convolution on layer 3
+    vgg_layer3_scaled = tf.multiply(vgg_layer3_out, 0.0001)
+    vgg_layer3_conv1x1 = tf.layers.conv2d(vgg_layer3_scaled, num_classes, 1, padding='same',
+                                          kernel_initializer=tf.truncated_normal_initializer(stddev=INITIALIZER_STDDEV) if USE_INITIALIZER else None,
+                                          kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=REGULARIZER_SCALE) if USE_REGULARIZER else None)
     # adding: layer3 + 2x (layer4 + 2x layer7)
     output_layer = tf.add(output_layer, vgg_layer3_conv1x1)
 
@@ -239,6 +236,23 @@ tests.test_train_nn(train_nn)
 
 def run():
 
+    # assembling parameters package
+    params = {
+        'epochs': EPOCHS,
+        'batch_size': BATCH_SIZE,
+        'learning_rate': LEARNING_RATE,
+        'keep_probabilty': KEEP_PROBABILITY,
+        'use_initializer': USE_INITIALIZER,
+        'initializer_std_dev': INITIALIZER_STDDEV,
+        'use_regularizer': USE_REGULARIZER,
+        'regularizer_scale': REGULARIZER_SCALE,
+        'num_classes': NUM_CLASSES,
+        'image_shape': IMAGE_SHAPE,
+        'probability_threshold': PROBABILITY_THRESHOLD,
+        'data_dir': DATA_DIR,
+        'runs_dir': RUNS_DIR
+    }
+
     tests.test_for_kitti_dataset(DATA_DIR)
 
     # Download pretrained vgg model
@@ -274,25 +288,10 @@ def run():
                                 correct_label, keep_prob, learning_rate)
 
         # TODO: Save inference data using helper.save_inference_samples
-        output_dir = helper.save_inference_samples(RUNS_DIR, DATA_DIR, sess, IMAGE_SHAPE, logits, keep_prob, image_input, NUM_CLASSES)
+        output_dir = helper.save_inference_samples(sess, logits, keep_prob, image_input, params)
 
-        # assembling parameters so that they get written to the output directory as well
-        params = {
-            'epochs': EPOCHS,
-            'batch_size': BATCH_SIZE,
-            'learning_rate': LEARNING_RATE,
-            'keep_probabilty': KEEP_PROBABILITY,
-            'use_initializer': USE_INITIALIZER,
-            'initializer_std_dev': INITIALIZER_STDDEV,
-            'use_regularizer': USE_REGULARIZER,
-            'regularizer_scale': REGULARIZER_SCALE,
-            'num_classes': NUM_CLASSES,
-            'image_shape': IMAGE_SHAPE,
-            'data_dir': DATA_DIR
-        }
-
-        # saving the parameters...
-        with open(os.path.join(output_dir, "paremeters.txt"), "w") as parameters_file:
+        # saving also the parameters...
+        with open(os.path.join(output_dir, "parameters.txt"), "w") as parameters_file:
             for key in params:
                 parameters_file.write("{}: {}\n".format(key, params[key]))
 
