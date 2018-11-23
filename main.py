@@ -273,7 +273,7 @@ def run():
         # OPTIONAL: Augment Images for better results
         #  https://datascience.stackexchange.com/questions/5224/how-to-prepare-augment-images-for-neural-network
 
-        # TODO: Build NN using load_vgg, layers, and optimize function
+        # Build NN using load_vgg, layers, and optimize function
         image_input, keep_prob, layer3_out, layer4_out, layer7_out = load_vgg(sess, vgg_path)
         output = layers(layer3_out, layer4_out, layer7_out, NUM_CLASSES)
 
@@ -283,11 +283,11 @@ def run():
 
         logits, train_op, loss = optimize(output, correct_label, learning_rate, NUM_CLASSES)
 
-        # TODO: Train NN using the train_nn function
+        # Train NN using the train_nn function
         training_log = train_nn(sess, EPOCHS, BATCH_SIZE, get_batches_fn, train_op, loss, image_input,
                                 correct_label, keep_prob, learning_rate)
 
-        # TODO: Save inference data using helper.save_inference_samples
+        # Save inference data using helper.save_inference_samples
         output_dir = helper.save_inference_samples(sess, logits, keep_prob, image_input, params)
 
         # saving also the parameters...
