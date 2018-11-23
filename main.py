@@ -21,7 +21,7 @@ else:
 
 
 # defining hyperparameters globally so that they can be accessed anywhere in the code
-EPOCHS = 100
+EPOCHS = 50
 BATCH_SIZE = 7
 LEARNING_RATE = 0.0001
 KEEP_PROBABILITY = 0.75
@@ -35,7 +35,7 @@ DATA_DIR = './data'
 RUNS_DIR = './runs'
 USE_INITIALIZER = True
 USE_REGULARIZER = True
-PROBABILITY_THRESHOLD = 0.8
+PROBABILITY_THRESHOLD = 0.85
 
 
 def load_vgg(sess, vgg_path):
