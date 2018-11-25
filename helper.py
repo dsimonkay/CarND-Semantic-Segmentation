@@ -107,10 +107,8 @@ def gen_batch_function(data_folder, image_shape, num_classes):
                     gt_image = np.concatenate((gt_bg, gt_rd, gt_o_rd), axis=2)
 
                 else:
-                    # discarding "other road"
-                    # gt_bg = gt_bg + gt_o_rd
-
                     # unfortunately, this doesn't work (but why?...)
+                    # gt_rd = gt_rd + gt_o_rd
                     # gt_image = np.concatenate((gt_bg, gt_rd), axis=2)
 
                     # so using the original code

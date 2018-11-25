@@ -21,21 +21,26 @@ else:
 
 
 # defining hyperparameters globally so that they can be accessed anywhere in the code
-EPOCHS = 50
-BATCH_SIZE = 7
+EPOCHS = 60
+BATCH_SIZE = 5
 LEARNING_RATE = 0.0001
 KEEP_PROBABILITY = 0.75
-INITIALIZER_STDDEV = 0.0075
-REGULARIZER_SCALE = 0.001
 
 # more parameters
 NUM_CLASSES = 2
 IMAGE_SHAPE = (160, 576)
 DATA_DIR = './data'
 RUNS_DIR = './runs'
+
 USE_INITIALIZER = True
+INITIALIZER_CLASS = "tf.contrib.layers.xavier_initializer"
+INITIALIZER_STDDEV = 0.01
 USE_REGULARIZER = True
+REGULARIZER_SCALE = 0.001
 PROBABILITY_THRESHOLD = 0.85
+LEARNING_RATE_DECAY_AFTER_EPOCHS = 8
+LEARNING_RATE_DECAY_DIVISOR = 1.4 
+
 
 
 def load_vgg(sess, vgg_path):
@@ -74,6 +79,36 @@ def load_vgg(sess, vgg_path):
 tests.test_load_vgg(load_vgg, tf)
 
 
+def get_initializer():
+    """
+    Helper function for NN assembling
+    """
+    initializer = None
+    if USE_INITIALIZER:
+
+        # not really a Pythonic solution, but it does the job :-/ 
+        if INITIALIZER_CLASS == "tf.contrib.layers.xavier_initializer":
+            initializer = tf.contrib.layers.xavier_initializer()
+
+        elif INITIALIZER_CLASS == "tf.truncated_normal_initializer":
+            initializer = tf.truncated_normal_initializer(stddev=INITIALIZER_STDDEV)
+
+        elif INITIALIZER_CLASS == "tf.random_normal_initializer":
+            initializer = tf.random_normal_initializer(stddev=INITIALIZER_STDDEV)
+
+        else:
+            pass
+
+    return initializer
+
+
+def get_regularizer():
+    """
+    Helper function for NN assembling
+    """
+    return tf.contrib.layers.l2_regularizer(scale=REGULARIZER_SCALE) if USE_REGULARIZER else None
+
+
 
 def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
     """
@@ -87,36 +122,37 @@ def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
 
     # 1x1 convolution on layer 7
     vgg_layer7_conv1x1 = tf.layers.conv2d(vgg_layer7_out, num_classes, 1, padding='same',
-                                          kernel_initializer=tf.truncated_normal_initializer(stddev=INITIALIZER_STDDEV) if USE_INITIALIZER else None,
-                                          kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=REGULARIZER_SCALE) if USE_REGULARIZER else None)
+                                          kernel_initializer=get_initializer(),
+                                          kernel_regularizer=get_regularizer())
     # upsampling: 2x layer 7
     vgg_layer7_x2 = tf.layers.conv2d_transpose(vgg_layer7_conv1x1, num_classes, 4, strides=2, padding='same',
-                                               kernel_initializer=tf.truncated_normal_initializer(stddev=INITIALIZER_STDDEV) if USE_INITIALIZER else None,
-                                               kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=REGULARIZER_SCALE) if USE_REGULARIZER else None)
+                                               kernel_initializer=get_initializer(),
+                                               kernel_regularizer=get_regularizer())
     # scaling + 1x1 convolution on layer 4
     vgg_layer4_scaled = tf.multiply(vgg_layer4_out, 0.01)
     vgg_layer4_conv1x1 = tf.layers.conv2d(vgg_layer4_scaled, num_classes, 1, padding='same',
-                                          kernel_initializer=tf.truncated_normal_initializer(stddev=INITIALIZER_STDDEV) if USE_INITIALIZER else None,
-                                          kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=REGULARIZER_SCALE) if USE_REGULARIZER else None)
+                                          kernel_initializer=get_initializer(),
+                                          kernel_regularizer=get_regularizer())
     # adding: layer4 + 2x layer7
     output_layer = tf.add(vgg_layer7_x2, vgg_layer4_conv1x1)
 
     # upsampling: 2x (layer4 + 2x layer7)
     output_layer = tf.layers.conv2d_transpose(output_layer, num_classes, 4, strides=2, padding='same',
-                                              kernel_initializer=tf.truncated_normal_initializer(stddev=INITIALIZER_STDDEV) if USE_INITIALIZER else None,
-                                              kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=REGULARIZER_SCALE) if USE_REGULARIZER else None)
+                                              kernel_initializer=get_initializer(),
+                                              kernel_regularizer=get_regularizer())
     # scaling + 1x1 convolution on layer 3
     vgg_layer3_scaled = tf.multiply(vgg_layer3_out, 0.0001)
     vgg_layer3_conv1x1 = tf.layers.conv2d(vgg_layer3_scaled, num_classes, 1, padding='same',
-                                          kernel_initializer=tf.truncated_normal_initializer(stddev=INITIALIZER_STDDEV) if USE_INITIALIZER else None,
-                                          kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=REGULARIZER_SCALE) if USE_REGULARIZER else None)
+                                          kernel_initializer=get_initializer(),
+                                          kernel_regularizer=get_regularizer())
+
     # adding: layer3 + 2x (layer4 + 2x layer7)
     output_layer = tf.add(output_layer, vgg_layer3_conv1x1)
 
     # upsampling: 8x (layer3 + 2x (layer4 + 2x layer7) )
     output_layer = tf.layers.conv2d_transpose(output_layer, num_classes, 16, strides=8, padding='same',
-                                              kernel_initializer=tf.truncated_normal_initializer(stddev=INITIALIZER_STDDEV) if USE_INITIALIZER else None,
-                                              kernel_regularizer=tf.contrib.layers.l2_regularizer(scale=REGULARIZER_SCALE) if USE_REGULARIZER else None)
+                                              kernel_initializer=get_initializer(),
+                                              kernel_regularizer=get_regularizer())
     return output_layer
 
 tests.test_layers(layers)
@@ -154,8 +190,6 @@ def optimize(nn_last_layer, correct_label, learning_rate, num_classes):
 tests.test_optimize(optimize)
 
 
-
-
 def train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_loss, input_image,
              correct_label, keep_prob, learning_rate):
     """
@@ -178,17 +212,34 @@ def train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_l
     if tf.test.gpu_device_name():
         log.append("Default GPU device: {}".format(tf.test.gpu_device_name()))
 
+    # learning rate will be decreased over time
+    learning_rate_var = LEARNING_RATE
+    message = "Learning rate: {:.9f} ({:.3e})".format(learning_rate_var, learning_rate_var)
+    log.append(message)
+    print(message)
+
     # measuring training duration
     training_start = time.time()
 
     # initializing global variables
     sess.run(tf.global_variables_initializer())
 
+    prev_average_loss = 0
+
+    # running through the eopchs
     for epoch in range(epochs):
 
         # measuring epoch duration
         epoch_start = time.time()
         losses = []
+
+        # learning rate decay
+        if epoch > 0 and epoch % LEARNING_RATE_DECAY_AFTER_EPOCHS == 0:
+
+            learning_rate_var /= LEARNING_RATE_DECAY_DIVISOR
+            message = "Decreased learning rate: {:.9f} ({:.3e})".format(learning_rate_var, learning_rate_var)
+            log.append(message)
+            print(message)
 
         # debug message
         print('Epoch {:d}: training...'.format(epoch+1), end='', flush=True)
@@ -198,7 +249,7 @@ def train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_l
             # assembling the feed dictionary
             train_feed_dict = {input_image: image,
                                correct_label: label,
-                               learning_rate: LEARNING_RATE,
+                               learning_rate: learning_rate_var,
                                keep_prob: KEEP_PROBABILITY}
 
             # running optimizer and getting the loss
@@ -209,10 +260,13 @@ def train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_l
         epoch_duration = time.time() - epoch_start
         average_loss = sum(losses) / float(len(losses))
 
-        # displaying some debug info
-        print("\b\b\b took {:.2f} seconds. Average loss: {:.4f}".format(epoch_duration, average_loss))
+        prev_loss_message = " (delta: {:+.4f})".format(average_loss - prev_average_loss) if epoch > 0 else ""
+        prev_average_loss = average_loss
 
-        log.append("Epoch {:d}: training took {:.2f} seconds. Average loss: {:.4f}".format(epoch+1, epoch_duration, average_loss))
+        # displaying some debug info
+        print("\b\b\b took {:.2f} seconds. Average loss: {:.4f}".format(epoch_duration, average_loss) + prev_loss_message)
+
+        log.append("Epoch {:d}: training took {:.2f} seconds. Average loss: {:.4f}".format(epoch+1, epoch_duration, average_loss) + prev_loss_message)
 
     # displaying some debug info
     training_duration = time.time() - training_start
@@ -243,12 +297,15 @@ def run():
         'learning_rate': LEARNING_RATE,
         'keep_probabilty': KEEP_PROBABILITY,
         'use_initializer': USE_INITIALIZER,
+        'initializer_class': INITIALIZER_CLASS,
         'initializer_std_dev': INITIALIZER_STDDEV,
         'use_regularizer': USE_REGULARIZER,
         'regularizer_scale': REGULARIZER_SCALE,
         'num_classes': NUM_CLASSES,
         'image_shape': IMAGE_SHAPE,
         'probability_threshold': PROBABILITY_THRESHOLD,
+        'learning_rate_decay_after_epochs': LEARNING_RATE_DECAY_AFTER_EPOCHS,
+        'learning_rate_decay_divisor': LEARNING_RATE_DECAY_DIVISOR,
         'data_dir': DATA_DIR,
         'runs_dir': RUNS_DIR
     }
@@ -293,7 +350,7 @@ def run():
         # saving also the parameters...
         with open(os.path.join(output_dir, "parameters.txt"), "w") as parameters_file:
             for key in params:
-                parameters_file.write("{}: {}\n".format(key, params[key]))
+                parameters_file.write("{}: {}\n".format((key + " ").ljust(35, "."), params[key]))
 
         # ...and the training log
         with open(os.path.join(output_dir, "training.log"), "w") as training_log_file:
