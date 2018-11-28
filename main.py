@@ -22,8 +22,8 @@ else:
 
 
 # defining hyperparameters globally so that they can be accessed anywhere in the code
-EPOCHS = 80
-BATCH_SIZE = 6
+EPOCHS = 60
+BATCH_SIZE = 7
 LEARNING_RATE = 0.0001
 KEEP_PROBABILITY = 0.75
 
@@ -37,14 +37,14 @@ DEBUG = False
 GRAPH_DIR = './graphs'
 DEBUG_DIR = './debug'
 USE_INITIALIZER = True
-INITIALIZER_CLASS = "tf.contrib.layers.xavier_initializer"  # NOT working with 3 classes :-/
-# INITIALIZER_CLASS = "tf.truncated_normal_initializer" # working with 3 classes
-INITIALIZER_STDDEV = 0.15   # 0.15: working with 3 classes (tested until 60 epochs)
+# INITIALIZER_CLASS = "tf.contrib.layers.xavier_initializer"  # NOT working with 3 classes :-/
+INITIALIZER_CLASS = "tf.truncated_normal_initializer"       # working with 3 classes
+INITIALIZER_STDDEV = 0.008                                  # 0.15: working with 3 classes (tested until 60 epochs)
 USE_REGULARIZER = True
 REGULARIZER_SCALE = 0.001
-PROBABILITY_THRESHOLD = 0.5
+PROBABILITY_THRESHOLD = 0.85
 LEARNING_RATE_DECAY_AFTER_EPOCHS = 10
-LEARNING_RATE_DECAY_MULTIPLIER = 0.9
+LEARNING_RATE_DECAY_MULTIPLIER = 1.0
 # TEST_FILE_PATTERN = "umm_000009.png"
 TEST_FILE_PATTERN = "*.png"
 
