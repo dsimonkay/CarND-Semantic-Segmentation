@@ -135,12 +135,23 @@ def gen_test_output(sess, logits, keep_prob, image_pl, data_folder, image_shape,
     :return: Output for for each test image
     """
 
+    (height, width) = image_shape
+
     # extracting relevant parameters
+    debug = params['debug'] if 'debug' in params else False
+    debug_dir = params['debug_dir'] if 'debug_dir' in params else './debug'
     num_classes = params['num_classes'] if 'num_classes' in params else 2
     probability_threshold = params['probability_threshold'] if 'probability_threshold' in params else 0.5
+    test_file_pattern = params['test_file_pattern'] if 'test_file_pattern' in params else '*.png'
+
+    # cleaning up
+    if debug:
+        if os.path.exists(debug_dir):
+            shutil.rmtree(debug_dir)
+        os.makedirs(debug_dir)
 
     # processing files
-    for image_file in glob(os.path.join(data_folder, 'image_2', '*.png')):
+    for image_file in glob(os.path.join(data_folder, 'image_2', test_file_pattern)):
 
         image = scipy.misc.imresize(scipy.misc.imread(image_file), image_shape)
 
@@ -148,16 +159,66 @@ def gen_test_output(sess, logits, keep_prob, image_pl, data_folder, image_shape,
             [tf.nn.softmax(logits)],
             {keep_prob: 1.0, image_pl: [image]})
 
-        # masking the road...
-        im_softmax_rd = im_softmax[0][:, 1].reshape(image_shape[0], image_shape[1])
-        segmentation_rd = (im_softmax_rd > probability_threshold).reshape(image_shape[0], image_shape[1], 1)
+        # masking the "basic" road pixels (pixels which have been marked explicitly as "road")
+        im_softmax_rd = im_softmax[0][:, 1].reshape(height, width)
+        segmentation_rd = (im_softmax_rd > probability_threshold).reshape(height, width, 1)
+
+        # creating the mask based on road pixels
         mask = np.dot(segmentation_rd, np.array([[0, 255, 0, 127]]))
 
-        # ...and the other roads
+        if debug:
+            np.save(os.path.join(debug_dir, 'im_softmax'), im_softmax)
+            np.save(os.path.join(debug_dir, 'im_softmax_rd'), im_softmax_rd)
+            np.save(os.path.join(debug_dir, 'segmentation_rd'), segmentation_rd)
+            np.save(os.path.join(debug_dir, 'mask_rd'), mask)
+
+        # extrawurst for three classes
         if num_classes == 3:
-            im_softmax_o_rd = im_softmax[0][:, 2].reshape(image_shape[0], image_shape[1])
-            segmentation_o_rd = (im_softmax_o_rd > probability_threshold).reshape(image_shape[0], image_shape[1], 1)
-            mask = mask + np.dot(segmentation_o_rd, np.array([[0, 0, 255, 127]]))
+
+            # basic case: explicit "other road" pixel values
+            im_softmax_o_rd = im_softmax[0][:, 2].reshape(height, width)
+            segmentation_o_rd = (im_softmax_o_rd > probability_threshold).reshape(height, width, 1)
+
+            # an "other road" is just a road as well, so we might be confused in certain cases, where
+            # the _individual_ probabilities of "road" and "other road" lie below the threshold, but the
+            # _sum_ of these probabilities might sill be over the threshold -- meaning that it's a road pixel
+
+            # creating a "union" road segmentation
+            im_softmax_rd_union = im_softmax_rd + im_softmax_o_rd
+            segmentation_rd_union = (im_softmax_rd_union > probability_threshold).reshape(height, width, 1)
+
+            # we have to decide which road pixel belongs to which class
+            segmentation_rd_dominant = (im_softmax_rd >= im_softmax_o_rd).reshape(height, width, 1)
+            segmentation_o_rd_dominant = (im_softmax_o_rd > im_softmax_rd).reshape(height, width, 1)
+
+            segmentation_rd_dominant_union = (segmentation_rd_union) & (segmentation_rd_dominant)
+            segmentation_o_rd_dominant_union = (segmentation_rd_union) & (segmentation_o_rd_dominant)
+
+            # updating the mask. using different colors for the different cases (mainly for debug purposes)
+            mask_o_rd = np.dot(segmentation_o_rd, np.array([[0, 0, 255, 127]]))
+            mask_rd_dominant = np.dot(segmentation_rd_dominant_union, np.array([[0, 255, 127, 127]]))
+            mask_o_rd_dominant = np.dot(segmentation_o_rd_dominant_union, np.array([[0, 127, 255, 127]]))
+
+            # yeah, I know, we'll definitely have values over 255 (...)
+            mask += mask_o_rd
+            mask += mask_rd_dominant
+            mask += mask_o_rd_dominant
+
+            if debug:
+                np.save(os.path.join(debug_dir, 'im_softmax_o_rd'), im_softmax_o_rd)
+                np.save(os.path.join(debug_dir, 'segmentation_o_rd'), segmentation_o_rd)
+                np.save(os.path.join(debug_dir, 'im_softmax_rd_union'), im_softmax_rd_union)
+                np.save(os.path.join(debug_dir, 'segmentation_rd_union'), segmentation_rd_union)
+
+                np.save(os.path.join(debug_dir, 'segmentation_rd_dominant'), segmentation_rd_dominant)
+                np.save(os.path.join(debug_dir, 'segmentation_o_rd_dominant'), segmentation_o_rd_dominant)
+                np.save(os.path.join(debug_dir, 'segmentation_rd_dominant_union'), segmentation_rd_dominant_union)
+                np.save(os.path.join(debug_dir, 'segmentation_o_rd_dominant_union'), segmentation_o_rd_dominant_union)
+
+                np.save(os.path.join(debug_dir, 'mask_o_rd'), mask_o_rd)
+                np.save(os.path.join(debug_dir, 'mask_rd_dominant'), mask_rd_dominant)
+                np.save(os.path.join(debug_dir, 'mask_o_rd_dominant'), mask_o_rd_dominant)
+                np.save(os.path.join(debug_dir, 'mask_final'), mask)
 
         mask = scipy.misc.toimage(mask, mode="RGBA")
         street_im = scipy.misc.toimage(image)

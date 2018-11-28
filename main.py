@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import os.path
+import shutil
 import time
 import tensorflow as tf
 import helper
@@ -21,8 +22,8 @@ else:
 
 
 # defining hyperparameters globally so that they can be accessed anywhere in the code
-EPOCHS = 60
-BATCH_SIZE = 5
+EPOCHS = 80
+BATCH_SIZE = 6
 LEARNING_RATE = 0.0001
 KEEP_PROBABILITY = 0.75
 
@@ -32,14 +33,20 @@ IMAGE_SHAPE = (160, 576)
 DATA_DIR = './data'
 RUNS_DIR = './runs'
 
+DEBUG = False
+GRAPH_DIR = './graphs'
+DEBUG_DIR = './debug'
 USE_INITIALIZER = True
-INITIALIZER_CLASS = "tf.contrib.layers.xavier_initializer"
-INITIALIZER_STDDEV = 0.01
+INITIALIZER_CLASS = "tf.contrib.layers.xavier_initializer"  # NOT working with 3 classes :-/
+# INITIALIZER_CLASS = "tf.truncated_normal_initializer" # working with 3 classes
+INITIALIZER_STDDEV = 0.15   # 0.15: working with 3 classes (tested until 60 epochs)
 USE_REGULARIZER = True
 REGULARIZER_SCALE = 0.001
-PROBABILITY_THRESHOLD = 0.85
-LEARNING_RATE_DECAY_AFTER_EPOCHS = 8
-LEARNING_RATE_DECAY_DIVISOR = 1.4 
+PROBABILITY_THRESHOLD = 0.5
+LEARNING_RATE_DECAY_AFTER_EPOCHS = 10
+LEARNING_RATE_DECAY_MULTIPLIER = 0.9
+# TEST_FILE_PATTERN = "umm_000009.png"
+TEST_FILE_PATTERN = "*.png"
 
 
 
@@ -123,28 +130,33 @@ def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
     # 1x1 convolution on layer 7
     vgg_layer7_conv1x1 = tf.layers.conv2d(vgg_layer7_out, num_classes, 1, padding='same',
                                           kernel_initializer=get_initializer(),
-                                          kernel_regularizer=get_regularizer())
+                                          kernel_regularizer=get_regularizer(),
+                                          name='vgg_layer7_conv1x1')
     # upsampling: 2x layer 7
     vgg_layer7_x2 = tf.layers.conv2d_transpose(vgg_layer7_conv1x1, num_classes, 4, strides=2, padding='same',
                                                kernel_initializer=get_initializer(),
-                                               kernel_regularizer=get_regularizer())
+                                               kernel_regularizer=get_regularizer(),
+                                               name='vgg_layer7_x2')
     # scaling + 1x1 convolution on layer 4
-    vgg_layer4_scaled = tf.multiply(vgg_layer4_out, 0.01)
+    vgg_layer4_scaled = tf.multiply(vgg_layer4_out, 0.01, name='vgg_layer4_scaled')
     vgg_layer4_conv1x1 = tf.layers.conv2d(vgg_layer4_scaled, num_classes, 1, padding='same',
                                           kernel_initializer=get_initializer(),
-                                          kernel_regularizer=get_regularizer())
+                                          kernel_regularizer=get_regularizer(),
+                                          name='vgg_layer4_conv1x1')
     # adding: layer4 + 2x layer7
     output_layer = tf.add(vgg_layer7_x2, vgg_layer4_conv1x1)
 
     # upsampling: 2x (layer4 + 2x layer7)
     output_layer = tf.layers.conv2d_transpose(output_layer, num_classes, 4, strides=2, padding='same',
                                               kernel_initializer=get_initializer(),
-                                              kernel_regularizer=get_regularizer())
+                                              kernel_regularizer=get_regularizer(),
+                                              name='upsampling_2x__layer4_plus_2x_layer7')
     # scaling + 1x1 convolution on layer 3
     vgg_layer3_scaled = tf.multiply(vgg_layer3_out, 0.0001)
     vgg_layer3_conv1x1 = tf.layers.conv2d(vgg_layer3_scaled, num_classes, 1, padding='same',
                                           kernel_initializer=get_initializer(),
-                                          kernel_regularizer=get_regularizer())
+                                          kernel_regularizer=get_regularizer(),
+                                          name='vgg_layer3_conv1x1')
 
     # adding: layer3 + 2x (layer4 + 2x layer7)
     output_layer = tf.add(output_layer, vgg_layer3_conv1x1)
@@ -152,7 +164,8 @@ def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
     # upsampling: 8x (layer3 + 2x (layer4 + 2x layer7) )
     output_layer = tf.layers.conv2d_transpose(output_layer, num_classes, 16, strides=8, padding='same',
                                               kernel_initializer=get_initializer(),
-                                              kernel_regularizer=get_regularizer())
+                                              kernel_regularizer=get_regularizer(),
+                                              name='upsampling_8x__layer3_plus_2x__layer4_plus_2x_layer7')
     return output_layer
 
 tests.test_layers(layers)
@@ -234,10 +247,10 @@ def train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_l
         losses = []
 
         # learning rate decay
-        if epoch > 0 and epoch % LEARNING_RATE_DECAY_AFTER_EPOCHS == 0:
+        if float(LEARNING_RATE_DECAY_MULTIPLIER) != 1.0 and epoch > 0 and epoch % LEARNING_RATE_DECAY_AFTER_EPOCHS == 0:
 
-            learning_rate_var /= LEARNING_RATE_DECAY_DIVISOR
-            message = "Decreased learning rate: {:.9f} ({:.3e})".format(learning_rate_var, learning_rate_var)
+            learning_rate_var *= LEARNING_RATE_DECAY_MULTIPLIER
+            message = "New learning rate: {:.9f} ({:.3e})".format(learning_rate_var, learning_rate_var)
             log.append(message)
             print(message)
 
@@ -260,7 +273,7 @@ def train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_l
         epoch_duration = time.time() - epoch_start
         average_loss = sum(losses) / float(len(losses))
 
-        prev_loss_message = " (delta: {:+.4f})".format(average_loss - prev_average_loss) if epoch > 0 else ""
+        prev_loss_message = " (delta: {:+.5f})".format(average_loss - prev_average_loss) if epoch > 0 else ""
         prev_average_loss = average_loss
 
         # displaying some debug info
@@ -292,6 +305,7 @@ def run():
 
     # assembling parameters package
     params = {
+        'debug': DEBUG,
         'epochs': EPOCHS,
         'batch_size': BATCH_SIZE,
         'learning_rate': LEARNING_RATE,
@@ -305,9 +319,12 @@ def run():
         'image_shape': IMAGE_SHAPE,
         'probability_threshold': PROBABILITY_THRESHOLD,
         'learning_rate_decay_after_epochs': LEARNING_RATE_DECAY_AFTER_EPOCHS,
-        'learning_rate_decay_divisor': LEARNING_RATE_DECAY_DIVISOR,
+        'learning_rate_decay_multiplier': LEARNING_RATE_DECAY_MULTIPLIER,
         'data_dir': DATA_DIR,
-        'runs_dir': RUNS_DIR
+        'runs_dir': RUNS_DIR,
+        'graph_dir': GRAPH_DIR,
+        'debug_dir': DEBUG_DIR,
+        'test_file_pattern': TEST_FILE_PATTERN
     }
 
     tests.test_for_kitti_dataset(DATA_DIR)
@@ -333,6 +350,15 @@ def run():
         # Build NN using load_vgg, layers, and optimize function
         image_input, keep_prob, layer3_out, layer4_out, layer7_out = load_vgg(sess, vgg_path)
         output = layers(layer3_out, layer4_out, layer7_out, NUM_CLASSES)
+
+        # for TensorBoard (...)
+        if DEBUG:
+            # cleanup + writing the graph
+            if os.path.exists(GRAPH_DIR):
+                shutil.rmtree(GRAPH_DIR)
+            os.makedirs(GRAPH_DIR)
+
+            writer = tf.summary.FileWriter(GRAPH_DIR, sess.graph)
 
         # declaring placeholders for the learning rate and for the labels
         learning_rate = tf.placeholder(tf.float32, name='learning_rate')
